@@ -1,0 +1,615 @@
+---
+title: "Introductinon to GLMs"
+author: "Josh Murray"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+In our first tutorial we looked at Linear regression and in our second we looked at logistic regression. In both cases we were able to use the `glm()` function (although we could also use the `lm()` function for linear regression). 
+
+Here we look at the `glm()` function more generally. As I am sure you have guessed, the glm in the function name stands for generalized linear model. We can use this to model data coming from any exponential family distribution. 
+
+First let's recall what we need to construct a GLM, and then we will go through some examples:
+
+
+### GLM
+
+A generalized linear model requires:
+
+1. A vector of outcomes $y_1, \dots y_n$
+2. A matrix of predictors $X$ and vector of coefficients $\beta$, forming a linear predictor vector $X\beta$.
+3. A link function $g$, yielding a vector of transformed data $\hat{y}=g^{-1}(X\beta)$ that are used to model the data
+4. A data distribution $p(y)$
+5. Possibly other parameters, such as *variances*, *overdispersions*, and *cutpoints*, involved in the
+predictors, link function, and data distribution.
+
+
+When we use the glm function, the options we choose are the link function $g$ and the data distribution p. 
+
+From the two examples we have seen already:
+
+- In linear regression  the transformation is the identity (that is, $g^{-1}(\mu) = \mu$) and the data distribution is normal, with standard deviation $\sigma$ estimated from data.
+
+- In logistic regression the transformation is the inverse logit, so that $g^{-1}(\mu) = \text{logit}^{-1}(\mu)$ and the data distribution is defined by the probability for binary data - $Pr(y = 1)$
+
+
+### Using linear regression
+
+Let's remind ourself of the basic case of linear regression, and see that we can identify each of the pieces above. 
+
+```{r, message=F, warning=F}
+library(tidyverse)
+df <- mtcars
+
+lin_reg <- glm(mpg ~ disp + hp + wt + vs + am, data = df, 
+               family = gaussian(link='identity'))
+```
+
+Above I specified both the family (`gaussian`) and the link function (`link='identity'`), although I didn't need to because the identity is the default link for the gaussian family. 
+
+As we have done several times when working with new R objects, let's look at the structure of this object. 
+
+```{r, message=F, warning=F}
+print(str(lin_reg))
+```
+
+
+
+There's a lot going on in here. We get all the usual stuff returned from a regression model (coefficients, fitted values, residuals, the data itself). I want to draw your eyes to one particular value, the family. Let's zoom in and see what is in that object. 
+
+
+```{r, message=F, warning=F}
+print(str(lin_reg$family))
+```
+
+
+Ah, here we see all of the information about the distribution as it relates to the glm.
+
+- the family is gaussian
+- the link  is the identity
+
+We can even access the link function itself. Since it is the identity, it will return the input value, but let's check that here. 
+
+```{r, message=F, warning=F, error=F}
+# the link function
+link_func <- lin_reg$family$linkfun
+
+# see the function code
+print(link_func)
+
+# try a couple of examples
+
+link_func(10)
+
+link_func(2.5)
+
+# the inverse link function
+inverse_link_func <- lin_reg$family$linkinv
+
+# see the function code
+print(inverse_link_func)
+
+# try a couple of examples
+
+inverse_link_func(10)
+
+inverse_link_func(2.5)
+```
+
+
+### Using logistic regression
+
+We just use a very simple example below to see the same object structure for a logistic regression. Here we model the probability that a car has an am transmission given the displacement, horsepower, and weight of the engine. 
+
+```{r, message=F, warning=F}
+library(tidyverse)
+df <- mtcars
+
+log_reg <- glm(am ~ disp + hp + wt , data = df, 
+               family = binomial(link='logit'))
+```
+
+We specified the family as `binomial` with a logit link. We actually don't need to specify the link function for the binomial family since the logit link is the default. 
+
+Let's just go ahead and look at the family object again. 
+
+```{r, message=F, warning=F}
+print(str(log_reg$family))
+```
+
+Let's play with the link and inverse link functions to see that they are actually the logit and inverse logit functions that we used in class. 
+
+```{r, message=F, warning=F, error=T}
+# What we specified in class
+logit <- qlogis
+inv_logit <- plogis
+
+# the link function from the model object
+link_func <- log_reg$family$linkfun
+
+# see the function code
+print(link_func)
+
+# try a couple of examples
+# this won't work (we need inputs on (0,1) and the error is helpful)
+link_func(10)
+
+# let's look at a sequence of 9 values
+link_values <- link_func(seq(0.1, 0.9, .1))
+print(link_values)
+# Here is the same sequence using our logit function
+logit_values <- logit(seq(0.1, 0.9, .1))
+print(logit_values)
+
+# are they all the same?
+all.equal(link_values, logit_values)
+
+# the inverse link function
+inverse_link_func <- log_reg$family$linkinv
+
+# see the function code
+print(inverse_link_func)
+
+# try a couple of examples
+
+inverse_link_values <- inverse_link_func(seq(-2, 2, length.out = 10))
+print(inverse_link_values)
+
+inv_logit_values <- inv_logit(seq(-2, 2, length.out = 10))
+print(inv_logit_values)
+
+# are they all the same?
+all.equal(inverse_link_values, inv_logit_values)
+
+
+```
+
+
+So now we can understand where these link and inverse link functions are coming from. Let's look at some other modeling scenarios.
+
+## Families available in `glm()`
+
+There is a set of families available for the `glm()` function in R. These are
+
+- `binomial(link = "logit")` 
+- `gaussian(link = "identity")`
+- `Gamma(link = "inverse")` - 
+- `inverse.gaussian(link = "1/mu^2")`
+- `poisson(link = "log")`
+- `quasi(link = "identity", variance = "constant")`
+- `quasibinomial(link = "logit")`
+- `quasipoisson(link = "log")`
+
+Some of the families can use multiple link functions, for example gaussian distribution can use `identity`, `log`, and `inverse`, while the binomial can use `logit`, `probit`, and `cauchit.` 
+
+We will introduce these as needed. For today, we are going to look at modeling count data using the poisson family, as well as overdispersed count data using the negative binomial distribution (found in the MASS package). 
+
+## Modeling a Count outcome
+
+Count outcomes (positive integer values) are ubiquitous in applied statistical modeling. Examples that come to mind
+
+- point scores in sporting events 
+  - number of goals in a hockey game
+  - the number of goals in a football match
+  - the number of shots made in a basketball game
+- The number of car accidents in a year in the city of Toronto
+- The number of votes a politician receives in an election
+- The number of cars a manufacturing facility can complete in a month
+- The number of new cases of a disease. 
+
+The list can go on and on, but these are just a few examples. 
+
+
+Two commonly used distributions that are used to model count outcomes are the `poisson` and the `negative binomial`. Here we look at some examples of each.
+
+### Poisson distribution
+
+Consider the model
+
+$$y_i \sim \text{Poisson}(e^{X_i\beta})$$
+
+Here, the linear predictor $X_i\beta$ is the logarithm of the expression $e^{X_i\beta}$. With the poisson model, we have
+
+$$sd(y_i) = \sqrt{E(y_i)}$$
+
+So that the mean and variance are equal. 
+
+Let's simulate some data. 
+
+R comes equipped with a wide array of functions for sampling from distributions. We have seen several already. Today, we will introduce two more
+
+- `rpois()` - for sampling poisson random variables
+- `rnegbin()` - for sampling negative binomial distributions (described below)
+
+```{r}
+
+# sample and plot poisson distributions for different rate parameters.
+
+rates <- c( 1, 5, 25, 50)
+
+poisson_samples <- purrr::map_df(rates, function(x) {
+  data.frame(x_vals = rpois(1000, x)) %>% 
+    mutate(rate = x)
+})
+
+poisson_samples %>% 
+  ggplot(aes(x_vals)) +
+  geom_histogram(bins = 100) +
+  facet_wrap(~rate) +
+  ggtitle("Samples from the poisson distribution with different rate parameters")
+```
+
+
+Note the use of `purrr::map_df()`, which I have used before. This function comes from the lovely [purrr package](https://purrr.tidyverse.org/) (made for functional programming).
+
+The main workhorse function from this package are the `map_` functions. These functions take inputs of varying types (vectors, lists, data.frames, more complex objects), then iterate over those objects applying a function at each step. 
+
+If you know the return type from each iteration, you can use a targetted function for each type. 
+
+- `map_chr` returns a character vector
+- `map_dbl` returns a numeric vector
+- `map_lgl` returns a logical vector
+- `map_call` returns function calls (advanced topic)
+
+In this case, we used `map_df` since we know we want a data.frame returned. Just to check our understanding, let's run this example without specifying we want a data.frame, and see what gets returned. 
+
+
+```{r}
+rates <- c( 1, 5, 25, 50)
+
+poisson_samples <- purrr::map(rates, function(x) {
+  data.frame(x_vals = rpois(1000, x)) %>% 
+    mutate(rate = x)
+})
+
+class(poisson_samples)
+
+length(poisson_samples)
+
+head(poisson_samples[[1]])
+
+```
+
+We get a list. So if we don't know what to expect, or we are expected complex and varied return types, it is best to stick with plain old `map`.
+
+Now let's sample from an actual poisson glm model. 
+
+```{r}
+
+sim_poisson <- function(samples = 100, intercept = 1, slope = 2) {
+  x_vals <- runif(samples, -2, 2)
+  lin_pred <- intercept + slope*x_vals
+  y_vals <- rpois(samples, exp(lin_pred))
+  return_df <- data.frame(lin_pred, x=x_vals, y=y_vals)
+  return(return_df)
+}
+
+sim_df <- sim_poisson()
+
+sim_df %>% 
+  ggplot(aes(y)) +
+  geom_density() +
+  labs(title = "single simulated poisson distribution")
+
+
+# how about 50 simulations
+
+
+many_sim_df <- purrr::map_df(1:50, function(x) {
+  sim_df <- sim_poisson()
+  sim_num <- x
+  sim_df <- sim_df %>% 
+    mutate(sim_num = sim_num)
+  return(sim_df)
+})
+
+many_sim_df %>% 
+  ggplot(aes(y, color=factor(sim_num))) +
+  geom_density() +
+  labs(title = "50 simulated poisson distribution") +
+  guides(color="none")
+
+```
+
+
+Let's fit a GLM to this data extract coefficients and plot fitted curves. 
+
+```{r}
+
+poisson_glm <- glm(y ~ x, data = sim_df, family = poisson(link="log"))
+
+# summary of fitted model
+summary(poisson_glm)
+
+
+# coefficients
+coef(poisson_glm)
+
+# exponentiated coefficients
+exp(coef(poisson_glm))
+
+# using broom::tidy
+broom::tidy(poisson_glm)
+
+broom::tidy(poisson_glm, exponentiate=T, conf.int=.95)
+
+# our simulated data
+sim_df %>% 
+  ggplot(aes(x, y)) +
+  geom_point() +
+  geom_smooth(method = 'glm',
+              method.args = list(family = 'poisson'))
+
+# our 50 simulated data
+many_sim_df %>% 
+  ggplot(aes(x, y, color=factor(sim_num))) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = 'glm',
+              method.args = list(family = 'poisson'), se=F) +
+  guides(color="none") +
+  labs(title = "50 simulated datasets")
+
+
+```
+
+
+### Negative binomial for overdispersion
+
+There is a variance assumption that goes along with using the poisson distribution (the variance is equal to the mean). This is rather stringent. What do we do in cases where our variance is larger than the mean. 
+
+When the variance is larger than the mean, we call this **overdispersion**.
+
+To model overdispersion, we use the Negative Binomial distribution. The Negative Binomial distribution  models the number of successes in a sequence of i.i.d Bernoulli trials before a specified number of failures occur. We won't go into further details here. 
+
+Unlike the poisson distribtuion, the Negative binomial has an additional reciprocal dispersion paramter (phi, or $\phi$) so that:
+
+$$sd(y|x)= \sqrt{E(y|x) + E(y|x)^2/\phi}$$
+
+We restrict $\phi$ to be positive with smaller values meaning more over dispersion. As $\phi$ goes to infinity, we get the poisson model. 
+
+
+Let's simulate some data with different amounts of dispersion. Not that there is no negative binomial distribution function in base R. Here we use `rnegbin()` from the `MASS` library. 
+
+
+```{r}
+sim_nb_data <- function(samples, phi) {
+  
+  sim_df <- sim_poisson(samples)
+  
+  nb_sim <- MASS::rnegbin(samples, exp(sim_df$lin_pred), phi)
+  nb_sim_data <- data.frame(x = sim_df$x, y = nb_sim)
+  return(nb_sim_data)
+}
+
+sim_nb <- sim_nb_data(150, phi = 1)
+
+sim_nb %>% 
+  ggplot(aes(y)) +
+  geom_density() +
+  ggtitle("Simulated negative binomial data")
+
+sim_nb %>% 
+  ggplot(aes(x ,y)) +
+  geom_point() +
+  ggtitle("Simulated negative binomial data",
+          subtitle = "phi = 1")
+
+
+
+```
+
+
+We can plot a Negative Binomial fit with ggplot as before but specifying Negative Binomial as the distribution. Again, we cannot use the `glm` function to model a negative binomial distribution. Thankfully the MASS package has a glm.nb function which has simular functionality to the glm function in base R.
+
+
+```{r}
+library(MASS)
+sim_nb %>% 
+  ggplot(aes(x ,y)) +
+  geom_point() +geom_smooth(method="glm.nb", se=TRUE) +
+  ggtitle("Simulated negative binomial data",
+          subtitle = "phi = 1")
+
+```
+
+
+Let's try simulating from a few different values of phi. 
+
+
+```{r}
+library(MASS)
+
+phi <- c(.1, 1, 10, 100)
+
+many_nb_sims <- purrr::map_df(phi, function(x) {
+  phi_val<- x
+  sim_nb <- sim_nb_data(150, phi = phi_val)
+  sim_nb <- sim_nb %>% 
+    mutate(phi_val = phi_val)
+  return(sim_nb)
+})
+
+many_nb_sims %>% 
+  ggplot(aes(x ,y)) +
+  geom_point() +geom_smooth(method="glm.nb", se=F) +
+  ggtitle("Simulated negative binomial data") +
+  facet_wrap(~phi_val)
+
+```
+
+
+To fit a negative binomial regression, we will use the `MASS::glm.nb` function
+
+```{r}
+
+sim_nb <- sim_nb_data(250, phi = 2.5)
+neg_nb_fit <- glm.nb(y ~ x, data = sim_nb)
+summary(neg_nb_fit)
+```
+
+The glm.nb function calls phi theta. It can be extracted with `neg_nb_fit$theta`. We see that we also get an AIC in our output. 
+
+We can calculate a likelihood ratio test to see if the addition of the overdispersion paramter has helped with model fit. 
+
+
+```{r}
+poisson_model <- glm(y ~ x , data = sim_nb, family = "poisson")
+pchisq(2 * (logLik(neg_nb_fit) - logLik(poisson_model)), df = 1, lower.tail = FALSE)
+
+```
+
+There is strong evidence that the additional parameter has helped with model fit. 
+
+
+### Exposure
+
+We often like to think of the main parameters in either the poisson or negative binomial distributions as a rate. For example, if we had some data on the number of car crashes per day in Toronto every month for two years, then we might model the rate of car crashes per month with a poisson model. 
+
+However, not everything is so clean in real life. We are often measuring our units over different intervals of time or with different levels of baseline exposure. 
+
+For example, we might want to measure the rate at which a hockey player scores a goal. So, we collect a data set on every game that every NHL (highest profession league) player plays in over the course of a year. Can we measure the rate of goal scoring with this data? 
+
+We can, but we need to take something else into account. Not every player plays the same amount of time in a game. A player that plays 22 minutes in a game has more opportunity to score, than a player who plays 3 minutes in a game. We say that our observations have a different amount of exposure and we can account for this by using what is called an **offset** in our model. 
+
+We can model $y_i$ as the number of cases in a process with rate $\theta_i = e^{X_i\beta}$ and exposure $\mu_i$ as
+
+$$ y_i \sim Poisson(\mu_i\theta_i)$$
+for poisson data or as
+
+$$ y_i \sim \text{Negative Binomial}(\mu_i\theta_i, \phi)$$
+
+The logarithm of the exposure, $log(\mu_i)$, is called the offset in generalized linear model terminology.
+
+#### Example (pest management in apartments)
+
+Cockroaches are a huge problem in apartments in major cities. In this experiment an intervention was applied to a group of apartments to determine if it could reduce the number of cockroaches found in the apartment. 
+
+
+Consider the following data:
+
+In this experiment, the treatment and control were
+applied to 158 and 104 apartments, respectively, and the outcome measurement yi in each apartment
+
+This data consists of 262 apartments: 158 received the treatment active management of cockroaches, and 104 apartments received the control (no intervention).
+
+Traps were set in each apartment to measure the number of roaches at the end of the experiment. Each apartment had traps for a different number of days (the offset).
+
+Let's read in the data and have a look
+
+```{r}
+roaches <- readr::read_csv('data/roaches.csv')
+
+DT::datatable(head(roaches), options = list(scrollX= T))
+```
+
+
+- `y` is the response variable
+- `and `roach1` are the number of roaches found at baseline 
+- `senior`  is an indicator for whether or not the home is a seniors complex
+Let's fit a poisson model and a negative binomial model to the data.
+- `exposure2` is the amount of time the traps were set in each apartment
+
+```{r}
+
+poisson_model <- glm( y~ roach1 + treatment + senior + offset(log(exposure2)),
+                      family = "poisson",
+                      data = roaches)
+nb_model <- glm.nb( y~ roach1 + treatment + senior + offset(log(exposure2)),
+                      data = roaches)
+
+summary(poisson_model)
+
+summary(nb_model)
+```
+
+
+We can compute the likelihood ratio test to see if the negative binomial model provides any value
+
+```{r}
+pchisq(2 * (logLik(nb_model) - logLik(poisson_model)), df = 1, lower.tail = FALSE)
+
+
+```
+
+We have very strong evidence to support the NB model over the poisson model. How else could we think about model fit. We could try simulating data from the expected rates of each model and look at it against the actual data.
+
+
+```{r}
+
+roaches <- roaches %>% 
+  mutate(poisson_rate = predict(poisson_model, .),
+         nb_rate = predict(nb_model, .))
+
+nsim <- 50
+
+simulations_df <- purrr::map_df(1:nsim, function(x) {
+  sim_num <- x
+  df <- roaches %>% 
+    rowwise() %>% 
+    mutate(poisson_sim = rpois(1, poisson_rate),
+           nb_sim = MASS::rnegbin(1, nb_rate, nb_model$theta)) %>% 
+    dplyr::select(y, poisson_sim,
+           nb_sim) %>% 
+    mutate(sim_num = sim_num) %>% 
+    ungroup()
+  
+  return(df)
+})
+```
+
+What did we do above? We calculated the expected rate of roaches for each row in the data (and for each model). We then simulated 50 values from those distributions for each row in the data (`simulations_df`). We are now going to plot those simulations against the actual data. We plot on the log scale
+
+```{r}
+simulations_df %>% 
+  ggplot(aes(log1p(y))) +
+  geom_density() +
+  geom_density(aes(log1p(poisson_sim), color=factor(sim_num))) +
+  guides(color="none") +
+  labs(title = "50 simulations from the poisson model vs the raw data")
+
+```
+
+We can see the simulated values don't match the data very closely. Let's have a look at the negative binomial model
+
+```{r}
+simulations_df %>% 
+  ggplot(aes(log1p(y))) +
+  geom_density() +
+  geom_density(aes(log1p(nb_sim), color=factor(sim_num))) +
+  guides(color="none") +
+  labs(title = "50 simulations from the nb model vs the raw data")
+
+```
+
+Although not perfect, we see a lot better fit the negative binomial model. This method is used often in bayesian models as a posterior predictive check. Here we are just doing a quick ad hoc check of some simulated values from our model against the raw data itself. 
+
+
+#### Coefficient interpretations
+
+Here we interpret the NB model (the poisson model interpretations are similar). 
+
+```{r}
+broom::tidy(nb_model)
+
+```
+
+
+The coefficients, are in a logarithmic scale and can be exponentiated and interpreted as multiplicative effects (like when we log transformed our inputs for linear regression).
+
+Our roach model is 
+
+$$y_i \sim \text{Negative Binomial}(e^{2.84 + 0.013\times\text{roach_baseline} -0.77\times\text{treatment}}, \phi)$$
+
+- Intercept, the rate of roaches for apartments with a baseline roach count of zero, no treatment, and not a senior complex
+- `roach1` is the expected difference in roaches (on logarithmic scale) for each additional roach at baseline. The expected multiplicative increase is $e^{0.013}=1.013$ or a 1.3% positive difference in the rate of roaches for each additional roach at baseline. 
+- `treatment` is the expected difference in roaches (on logarithmic scale) for apartments in the treatment group. The expected multiplicative decrease is $e^{-0.777}=0.460$ or a 54% decrease in the rate of roaches for those apartment in the treatment group (who are the same on the other covariate, i.e. baseline roach count and senior complex). 
+- `senior` - is the expected difference in roaches (on logarithmic scale) for apartments that are senior complexes (and the same on the other covariates). The expected multiplicative decrease is $e^{-0.351}=0.703$ or a 29.7% decrease in the rate of roaches for those apartment that are senior complexes (and the same across the other covariates). 
+
+
+
+
